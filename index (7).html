@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Testagram Reels - Cached Autoplay</title>
+<style>
+  body {
+    margin: 0; background: #000; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+  }
+  .header {
+    padding: 15px; text-align: center; background: linear-gradient(to right, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+    color: #000; font-weight: 700; font-size: 24px;
+  }
+  #video-feed {
+    height: calc(100vh - 60px); overflow-y: scroll; scroll-snap-type: y mandatory;
+  }
+  .video-item {
+    scroll-snap-align: start; width: 100vw; height: 100vh; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  iframe {
+    width: 100%; height: 100%; border: none;
+  }
+  .overlay {
+    position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.5);
+    padding: 8px 12px; border-radius: 8px; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">Testagram Reels</div>
+<div id="video-feed"></div>
+
+<script>
+  const API_KEY = 'AIzaSyDjvbaoFDJLxx-IW_EZgL9sDI4x6DguGA4'; // your API key here
+  const CACHE_KEY = 'testagramVideoCache';
+  const CACHE_DURATION = 20 * 60 * 1000; // 20 minutes in milliseconds
+  const videoFeed = document.getElementById('video-feed');
+
+  const topics = [
+    'trending music USA', 'top music Nigeria', 'hit songs UK', 'Bollywood hits India', 'Kpop trending Korea',
+    'top Ghana songs', 'Naija afrobeat', 'Brazilian funk top 10', 'French rap 2024',
+    'top trending series USA', 'Netflix series trailers', 'Korean drama trailer', 'popular series Africa',
+    'action movie trailers', 'romantic movies 2024', 'Nollywood movies trailer',
+    'Hollywood blockbuster 2024', 'anime trailers 2024', 'European cinema top picks',
+    'viral hip hop USA', 'TikTok viral music', 'top comedy skits Nigeria', 'fashion shows Paris', 'celebrity gossip'
+  ];
+
+  async function getCachedVideos() {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Date.now() - parsed.timestamp < CACHE_DURATION) {
+        return parsed.videos;
+      }
+    }
+    const videos = await fetchVideosBatch(10);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), videos }));
+    return videos;
+  }
+
+  async function fetchVideosBatch(count) {
+    const results = [];
+    for (let i = 0; i < count; i++) {
+      const topic = topics[Math.floor(Math.random() * topics.length)];
+      try {
+        const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&order=viewCount&q=${encodeURIComponent(topic)}&key=${API_KEY}`);
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          const item = data.items[0];
+          results.push({
+            videoId: item.id.videoId,
+            title: item.snippet.title,
+            topic
+          });
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+    }
+    return results;
+  }
+
+  function renderVideos(videos) {
+    videoFeed.innerHTML = '';
+    videos.forEach(({videoId, title, topic}) => {
+      const videoDiv = document.createElement('div');
+      videoDiv.className = 'video-item';
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('loading', 'lazy');
+      iframe.setAttribute('allow', 'autoplay; encrypted-media');
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=0&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1`;
+      videoDiv.appendChild(iframe);
+
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      overlay.textContent = `${topic} - ${title}`;
+      videoDiv.appendChild(overlay);
+
+      videoFeed.appendChild(videoDiv);
+    });
+
+    setupAutoplay();
+  }
+
+  function setupAutoplay() {
+    const options = {
+      root: videoFeed,
+      threshold: 0.9
+    };
+    let currentPlaying = null;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const iframe = entry.target.querySelector('iframe');
+        if (entry.isIntersecting) {
+          if (currentPlaying && currentPlaying !== iframe) {
+            stopVideo(currentPlaying);
+          }
+          playVideo(iframe);
+          currentPlaying = iframe;
+        } else {
+          stopVideo(iframe);
+        }
+      });
+    }, options);
+
+    document.querySelectorAll('.video-item').forEach(el => observer.observe(el));
+  }
+
+  function playVideo(iframe) {
+    const src = iframe.src;
+    if (!src.includes('autoplay=1')) {
+      iframe.src = src.replace('autoplay=0', 'autoplay=1').replace('mute=1', 'mute=0');
+    }
+  }
+
+  function stopVideo(iframe) {
+    const src = iframe.src;
+    if (!src.includes('autoplay=0')) {
+      iframe.src = src.replace('autoplay=1', 'autoplay=0').replace('mute=0', 'mute=1');
+    }
+  }
+
+  (async () => {
+    const videos = await getCachedVideos();
+    renderVideos(videos);
+  })();
+</script>
+
+</body>
+</html>
